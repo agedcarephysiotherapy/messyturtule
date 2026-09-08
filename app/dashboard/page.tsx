@@ -1,6 +1,55 @@
 'use client';
 
-import { useEffect,useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createClient } from '../../lib/supabase-browser';
 
-export default function Dashboard(){const [email,setEmail]=useState('');const [loading,setLoading]=useState(true);useEffect(()=>{(async()=>{const s=createClient();const {data}=await s.auth.getUser();if(!data.user){window.location.href='/login';return;}setEmail(data.user.email??'');setLoading(false);})();},[]);async function signout(){await createClient().auth.signOut();window.location.href='/';}if(loading)return <main className="container"><p>Loading your dashboard…</p></main>;return <main><header className="topbar"><div className="logo">Messy<span>Turtule</span></div><button className="btn secondary" onClick={signout}>Sign out</button></header><div className="container"><section className="hero" style={{paddingBottom:10}}><div><div className="eyebrow">Customer dashboard</div><h1 style={{fontSize:52}}>Your loyalty,<br/>all in one place.</h1><p className="lead">Signed in as {email}</p></div><div className="card qr-card"><div className="meta">Your universal QR</div><div className="qr">{Array.from({length:81},(_,i)=><i key={i}/>)}</div><strong>Ready to scan</strong></div></section><section className="section"><h2>Your programmes</h2><div className="card"><p style={{marginTop:0}}>You haven't joined any loyalty programmes yet.</p><button className="btn primary">Join a programme</button></div></section><section className="section"><div className="grid"><div className="card feature"><div className="icon">🎁</div><h3>Rewards</h3><p>Your earned rewards will appear here.</p></div><div className="card feature"><div className="icon">📣</div><h3>Offers</h3><p>Promotions from businesses you follow.</p></div><div className="card feature"><div className="icon">🧾</div><h3>History</h3><p>Your stamps and redemptions in one timeline.</p></div></div></section></div></main>}
+export default function Dashboard() {
+  const [email, setEmail] = useState('');
+  const [programmes, setProgrammes] = useState<any[]>([]);
+  const [rewards, setRewards] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) { window.location.href = '/login'; return; }
+      setEmail(auth.user.email ?? '');
+
+      const { data } = await supabase
+        .from('programme_memberships')
+        .select('id, joined_at, programme:loyalty_programmes(id,name,description,stamps_required,reward_name,organisations(name)), stamps(quantity,created_at), rewards(id,redeemed_at,created_at)')
+        .eq('customer_id', auth.user.id)
+        .order('joined_at', { ascending: false });
+
+      const rows = data ?? [];
+      setProgrammes(rows);
+      setRewards(rows.flatMap((r: any) => (r.rewards ?? []).filter((x: any) => !x.redeemed_at)));
+      setLoading(false);
+    })();
+  }, []);
+
+  async function signout() {
+    await createClient().auth.signOut();
+    window.location.href = '/';
+  }
+
+  if (loading) return <main className="container"><p>Loading your dashboard…</p></main>;
+
+  return <main>
+    <header className="topbar"><div className="logo">Messy<span>Turtule</span></div><button className="btn secondary" onClick={signout}>Sign out</button></header>
+    <div className="container">
+      <section className="hero" style={{ paddingBottom: 10 }}>
+        <div><div className="eyebrow">Customer dashboard</div><h1 style={{ fontSize: 52 }}>Your loyalty,<br />all in one place.</h1><p className="lead">Signed in as {email}</p></div>
+        <div className="card qr-card"><div className="meta">Your universal QR</div><div className="qr">{Array.from({ length: 81 }, (_, i) => <i key={i} />)}</div><strong>Show this code at checkout</strong></div>
+      </section>
+
+      <section className="section"><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16}}><h2>Your programmes</h2><a className="btn primary" href="/join/">Join a programme</a></div>
+        {programmes.length === 0 ? <div className="card"><p style={{ marginTop: 0 }}>You haven't joined any loyalty programmes yet.</p><a className="btn primary" href="/join/">Join your first programme</a></div> :
+          <div className="grid">{programmes.map((row: any) => { const stamps=(row.stamps??[]).reduce((n:any,s:any)=>n+(s.quantity||0),0); const reward=(row.rewards??[]).find((r:any)=>!r.redeemed_at); return <div className="card feature" key={row.id}><div className="meta">{row.programme?.organisations?.name ?? 'Business'}</div><h3>{row.programme?.name}</h3><p>{row.programme?.description}</p><strong>{Math.min(stamps,row.programme?.stamps_required ?? 0)} / {row.programme?.stamps_required} stamps</strong><div style={{marginTop:12,height:10,borderRadius:99,background:'#eee',overflow:'hidden'}}><div style={{height:'100%',width:`${Math.min(100,(stamps/(row.programme?.stamps_required||1))*100)}%`,background:'currentColor'}}/></div>{reward && <p style={{marginBottom:0,marginTop:12}}>🎁 Reward ready: {row.programme?.reward_name}</p>}</div>})}</div>}
+      </section>
+
+      <section className="section"><div className="grid"><div className="card feature"><div className="icon">🎁</div><h3>Rewards</h3><p>{rewards.length ? `${rewards.length} reward${rewards.length > 1 ? 's' : ''} ready to redeem.` : 'Earn rewards as you collect stamps.'}</p></div><div className="card feature"><div className="icon">📣</div><h3>Offers</h3><p>Promotions from businesses you follow will appear here.</p></div><div className="card feature"><div className="icon">🧾</div><h3>History</h3><p>Your stamps and redemptions in one timeline.</p></div></div></section>
+    </div>
+  </main>;
+}
